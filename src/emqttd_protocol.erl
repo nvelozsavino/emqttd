@@ -190,12 +190,34 @@ process(Packet = ?CONNECT_PACKET(Var), State0) ->
     %% stop if authentication failure
     stop_if_auth_failure(ReturnCode1, State3);
 
-process(Packet = ?PUBLISH_PACKET(_Qos, Topic, _PacketId, _Payload), State = #proto_state{is_superuser = IsSuper}) ->
-    case IsSuper orelse allow == check_acl(publish, Topic, client(State)) of
-        true  -> publish(Packet, State);
-        false -> ?LOG(error, "Cannot publish to ~s for ACL Deny", [Topic], State)
-    end,
-    {ok, State};
+process(Packet = ?PUBLISH_PACKET(?QOS_0, Topic, _PacketId, _Payload), State) ->
+  case check_acl(publish, Topic, client(State)) of
+    allow ->
+      publish(Packet, State);
+    deny ->
+      ?LOG(error, "Cannot publish to ~s for ACL Deny", [Topic], State)
+  end,
+  {ok, State};
+
+process(Packet = ?PUBLISH_PACKET(?QOS_1, Topic, _PacketId, _Payload), State) ->
+  case check_acl(publish, Topic, client(State)) of
+    allow ->
+      publish(Packet, State);
+    deny ->
+      ?LOG(error, "Cannot publish to ~s for ACL Deny", [Topic], State),
+      send(?PUBACK_PACKET(?PUBACK, _PacketId), State)
+  end,
+  {ok, State};
+
+process(Packet = ?PUBLISH_PACKET(?QOS_2, Topic, _PacketId, _Payload), State) ->
+  case check_acl(publish, Topic, client(State)) of
+    allow ->
+      publish(Packet, State);
+    deny ->
+      ?LOG(error, "Cannot publish to ~s for ACL Deny", [Topic], State),
+      send(?PUBACK_PACKET(?PUBREC, _PacketId), State)
+  end,
+  {ok, State};
 
 process(?PUBACK_PACKET(?PUBACK, PacketId), State = #proto_state{session = Session}) ->
     emqttd_session:puback(Session, PacketId),
